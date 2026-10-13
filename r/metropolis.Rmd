@@ -1,0 +1,88 @@
+---
+title: "Random Walk Metropolis sampler and R-hat convergence check (R version)"
+author: "Matthew James Tan"
+output: html_document
+---
+
+Original R implementation from the ST2195 coursework. Samples from
+f(x) = 0.5 * exp(-|x|), then checks convergence across step sizes with the
+Gelman-Rubin R-hat statistic. See `python/metropolis.py` for the extended version.
+
+```{r}
+library(ggplot2)
+log_f <- function(x) {
+  return(log(0.5) - abs(x))
+}
+```
+
+```{r}
+run_metropolis <- function(N, s, x0 = 0) {
+  samples <- numeric(N)
+  current_x <- x0
+  
+  for (i in 1:N) {
+    x_star <- rnorm(1, mean = current_x, sd = s)
+    
+    log_r <- log_f(x_star) - log_f(current_x)
+    
+    if (log(runif(1)) < log_r) {
+      current_x <- x_star
+    }
+    
+    samples[i] <- current_x
+  }
+  return(samples)
+}
+```
+
+# Part 1a
+```{r}
+set.seed(42)
+N <- 10000
+s <- 1
+samples_a <- run_metropolis(N, s)
+
+df_plot <- data.frame(x = samples_a)
+ggplot(df_plot, aes(x = x)) +
+  geom_histogram(aes(y = ..density..), bins = 50, fill = "steelblue", color = "white", alpha = 0.7) +
+  geom_density(color = "darkblue", size = 1) +
+  stat_function(fun = function(x) 0.5 * exp(-abs(x)), color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Metropolis-Hastings Sampling (N=10000, s=1)",
+       subtitle = "Blue: KDE | Red Dashed: Theoretical PDF",
+       x = "Value", y = "Density") +
+  theme_minimal()
+
+cat("Mean:", mean(samples_a), "| SD:", sd(samples_a), "\n")
+```
+
+```{r}
+calculate_r_hat <- function(N, s, J = 4) {
+  chains <- replicate(J, run_metropolis(N, s, x0 = rnorm(1, 0, 10)))
+  
+  W <- mean(apply(chains, 2, var))
+  
+  chain_means <- apply(chains, 2, mean)
+  B <- N * var(chain_means)
+  
+  var_hat <- ((N - 1) / N) * W + (1 / N) * B
+  
+  r_hat <- sqrt(var_hat / W)
+  return(r_hat)
+}
+```
+
+# Part 1b
+```{r}
+s_grid <- seq(0.001, 1, length.out = 50)
+r_hat_values <- sapply(s_grid, function(s) calculate_r_hat(2000, s))
+```
+
+```{r}
+df_rhat <- data.frame(s = s_grid, r_hat = r_hat_values)
+ggplot(df_rhat, aes(x = s, y = r_hat)) +
+  geom_line(color = "darkgreen", size = 1) +
+  geom_hline(yintercept = 1.05, color = "red", linetype = "dotted") +
+  labs(title = "Convergence Diagnostic (R-hat) vs. Step Size (s)",
+       x = "Step Size (s)", y = "R-hat") +
+  theme_light()
+```
